@@ -698,6 +698,341 @@ implementation 'com.android.support:percent:24.2.1'
 
 **目前新版的sdk已经没有这个文件了，集成到了as编辑器里面，右键png图片就可以看到** 
 
+### 五、广播
+
+#### 1、简介
+
+> Android提供了一套完整的API，允许应用程序自由地发送和接收广播，
+>
+> Android内置了很多系统级别的广播，我们可以在应用程序中通过监听这些广播来得到各种系统的状态信息。比如手机开机完成后会发出一条广播，电池的电量发生变化会发出一条广播，时间或时区发生改变也会发出一条广播，等等
+
++ 标准广播
+
+  > 标准广播（Normal broadcasts）是一种完全异步执行的广播，在广播发出之后，所有的广播接收器几乎都会在同一时刻接收到这条广播消息，因此它们之间没有任何先后顺序可言。这种广播的效率会比较高，但同时也意味着它是无法被截断的
+
++ 有序广播
+
+  > 有序广播（Ordered broadcasts）则是一种同步执行的广播，在广播发出之后，同一时刻只会有一个广播接收器能够收到这条广播消息，当这个广播接收器中的逻辑执行完毕后，广播才会继续传递。所以此时的广播接收器是有先后顺序的，优先级高的广播接收器就可以先收到广播消息，并且前面的广播接收器还可以截断正在传递的广播，这样后面的广播接收器就无法收到广播消息了
+
+#### 2、接收系统广播
+
+> 广播接收器可以自由地对自己感兴趣的广播进行注册，这样当有相应的广播发出时，广播接收器就能够收到该广播，并在内部处理相应的逻辑
+
+> 注册广播的方式一般有两种，在代码中注册和在AndroidManifest.xml中注册，其中前者也被称为动态注册，后者也被称为静态注册
+
++ 注册广播
+
+  > 那么该如何创建一个广播接收器呢？其实只需要新建一个类，让它继承自Broadcast-Receiver，并重写父类的onReceive()方法就行了。这样当有广播到来时，onReceive()方法就会得到执行，具体的逻辑就可以在这个方法中处理
+
+  ~~~java
+  /**
+   * 广播测试
+   */
+  public class BroadcastActiviy extends AppCompatActivity {
+      private IntentFilter intentFilter;
+      private NetworkChangeReceiver networkChangeReceiver;
+  
+      @Override
+      protected void onCreate(Bundle savedInstanceState) {
+          super.onCreate(savedInstanceState);
+          setContentView(R.layout.activity_broadcast_activiy);
+          intentFilter = new IntentFilter();
+          intentFilter.addAction("android.net.conn.CONNECTIVITY_CHANGE");
+          networkChangeReceiver = new NetworkChangeReceiver();
+          registerReceiver(networkChangeReceiver,intentFilter);
+      }
+  
+      @Override
+      protected void onDestroy(){
+          super.onDestroy();
+          unregisterReceiver(networkChangeReceiver);
+      }
+      class NetworkChangeReceiver extends BroadcastReceiver {
+          @Override
+          public void onReceive(Context context, Intent intent){
+              Toast.makeText(BroadcastActiviy.this,"network change",Toast.LENGTH_SHORT).show();
+          }
+      }
+  }
+  ~~~
+
+  > 动态注册的广播接收器可以自由地控制注册与注销，在灵活性方面有很大的优势，但是它也存在着一个缺点，即必须要在程序启动之后才能接收到广播，因为注册的逻辑是写在onCreate()方法中的
+
++ 静态注册（Android8.0在AndroidManifest.xml文件中静态注册广播接收失效是由于**官方对耗电量的优化，避免APP滥用广播的一种处理方式**。除了少部分的广播仍支持静态注册（如开机广播），其余的都会出现**失效**的情况）
+
+  > 可以让程序在未启动的情况下就能接收到广播
+
+  ~~~java
+  public class BootCompleteReceiver extends BroadcastReceiver {
+  
+      @Override
+      public void onReceive(Context context, Intent intent) {
+          Toast.makeText(context,"Boot Complete",Toast.LENGTH_SHORT).show();
+      }
+  }
+  
+  
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+      
+  <receiver
+      android:name=".BootCompleteReceiver"
+      android:enabled="true"
+      android:exported="true">
+      <intent-filter>
+           <action android:name="android.intent.action.BOOT_COMPLETED"/>
+      </intent-filter>
+  </receiver>
+  ~~~
+
+  
+
+#### 3、发送广播
+
++ 标准广播
+
+  ~~~
+  //广播接收器
+  public class MyReceiver extends BroadcastReceiver {
+      @Override
+      public void onReceive(Context context, Intent intent) {
+          Toast.makeText(context,"接收到自定义广播",Toast.LENGTH_SHORT).show();
+      }
+  }
+  
+  @Override
+  protected void onCreate(Bundle savedInstanceState) {
+      super.onCreate(savedInstanceState);
+      setContentView(R.layout.activity_broadcast_activiy);
+      intentFilter=new IntentFilter();
+      //这里定义接受器监听广播的类型，这里添加相应的广播
+      intentFilter.addAction("com.example.fileedit.MY_BROADCAST");
+      //实例化接收器
+      MyBroadcastReceiver m = new MyBroadcastReceiver();
+      //注册事件，将监听类型赋给对应的广播接收器----所以这叫动态注册
+      registerReceiver(m,intentFilter);
+      Button btn = (Button) findViewById(R.id.btn_brod);
+      btn.setOnClickListener(new View.OnClickListener() {
+          @Override
+          public void onClick(View v) {
+              Intent intent = new Intent("com.example.fileedit.MY_BROADCAST");
+              sendBroadcast(intent);
+              }
+      });
+  }
+  ~~~
+
++ 有序广播
+
+  > 1、将sendBroadcast()方法改成send-OrderedBroadcast()方法
+  >
+  > 2、注册的时候android:priority属性给广播接收器设置了优先级,优先级比较高的广播接收器就可以先收到广播
+  >
+  > 3、在onReceive()方法中调用了abortBroadcast()方法，就表示将这条广播截断
+
+#### 4、本地广播（LocalBroadcastManager）
+
+> 首先是通过LocalBroadcastManager的getInstance()方法得到了它的一个实例，然后在注册广播接收器的时候调用的是LocalBroadcastManager的registerReceiver()方法，在发送广播的时候调用的是LocalBroadcastManager的sendBroadcast()方法，仅此而已。这里我们在按钮的点击事件里面发出了一条com.example.broadcasttest.LOCAL_BROADCAST广播，然后在LocalReceiver里去接收这条广播
+
+### 六、数据存储全方案
+
+#### 1、文件存储
+
+> 文件存储是Android中最基本的一种数据存储方式，它不对存储的内容进行任何的格式化处理，所有数据都是原封不动地保存到文件当中的，因而它比较适合用于存储一些简单的文本数据或二进制数据
+
++ Context类中提供了一个openFileOutput()方法，可以用于将数据存储到指定的文件中。这个方法接收两个参数，
++ 第一个参数是文件名，在文件创建的时候使用的就是这个名称，注意这里指定的文件名不可以包含路径，因为所有的文件都是默认存储到/data/data/<package name>/files/目录下的
++ 第二个参数是文件的操作模式，主要有两种模式可选，MODE_PRIVATE和MODE_APPEND。其中MODE_PRIVATE是默认的操作模式，表示当指定同样文件名的时候，所写入的内容将会覆盖原文件中的内容，而MODE_APPEND则表示如果该文件已存在，就往文件里面追加内容，不存在就创建新文件。其实文件的操作模式本来还有另外两种：MODE_WORLD_READABLE和MODE_WORLD_WRITEABLE，这两种模式表示允许其他的应用程序对我们程序中的文件进行读写操作，不过由于这两种模式过于危险，很容易引起应用的安全性漏洞，已在Android 4.2版本中被废弃
++ Context类中还提供了一个openFileInput()方法，用于从文件中读取数据。这个方法要比openFileOutput()简单一些，它只接收一个参数，即要读取的文件名，然后系统会自动到/data/data/<package name>/files/目录下去加载这个文件，并返回一个FileInputStream对象，得到了这个对象之后再通过Java流的方式就可以将数据读取出来了
+
+#### 2 、SharedPreferences存储
+
+>如何获取到SharedPreferences对象
+>
+>1、Context类中的getSharedPreferences()方法
+>
+>2、Activity类中的getPreferences()方法
+>
+>3、PreferenceManager类中的getDefaultSharedPreferences()方法
+
+~~~java
+public class SPActivity extends AppCompatActivity {
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_s_p);
+        Button btn = (Button) findViewById(R.id.btn_sp);
+        btn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+            	//保存数据
+                SharedPreferences.Editor editor = getSharedPreferences("data",MODE_PRIVATE).edit();
+                editor.putString("name","张三");
+                editor.putInt("age",12);
+                editor.putBoolean("isStudy",true);
+                editor.apply();
+
+                //读取数据
+                SharedPreferences spf = getSharedPreferences("data",MODE_PRIVATE);
+                String name = spf.getString("name","");
+                Toast.makeText(SPActivity.this,"name="+name,Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+}
+~~~
+
+#### 3、SQLite数据库存储
+
+> 使用开源项目 LitePal 操作数据库
+>
+> 1、引入 implementation 'org.litepal.android:core:1.4.1'
+>
+> 2、编写实体类 继承DataSupport，public class Book extends DataSupport 
+>
+> 3、编写litepal.xml配置文件  main-->assets-->litepal.xml
+>
+> 4、进行初始化库、增删改查等操作
+
+~~~java
+<?xml version="1.0" encoding="utf-8" ?>
+<litepal>
+    <dbname value ="BookStore"></dbname>
+    <version value ="1"></version>
+    <list>
+        <mapping class="com.example.fileedit.vo.Book"></mapping>
+    </list>
+</litepal>
+           
+@Override
+ public void onClick(View v) {
+   //初始化 数据库
+   LitePal.getDatabase();
+   //保存数据
+   book.save();
+   //更新数据
+   book.updateAll(...);
+   //删除数据
+   book.delete();
+   DataSupport.deleteAll(....);//其中deleteAll()方法的第一个参数用于指定删除哪张表中的数据，Book.class就意味着删除Book表中的数据，后面的参数用于指定约束条件
+   //查询数据
+   DataSupport.findAll(Book.class);
+ }
+~~~
+
+### 七、内容提供器（Content Provider）
+
+> 内容提供器（Content Provider）主要用于在不同的应用程序之间实现数据共享的功能，它提供了一套完整的机制，允许一个程序访问另一个程序中的数据，同时还能保证被访数据的安全性。目前，使用内容提供器是Android实现跨程序共享数据的标准方式
+>
+> 如果一个应用程序通过内容提供器对其数据提供了外部访问接口，那么任何其他的应用程序就都可以对这部分数据进行访问。Android系统中自带的电话簿、短信、媒体库等程序都提供了类似的访问接口，这就使得第三方应用程序可以充分地利用这部分数据来实现更好的功能
+
+#### 1、运行时权限	
+
+> Android现在将所有的权限归成了两类，一类是普通权限，一类是危险权限
+>
+> 1、普通权限只需要在AndroidManifest.xml文件中添加一下权限声明
+>
+> 2、危险权限需要进行运行时权限处理
+
+#### 2、如何在程序运行时申请权限
+
+1. 先判断用户是否已经给我们授权了
+
+   ~~~java
+   //checkSelfPermission()方法接收两个参数，第一个参数是Context，这个没什么好说的，第二个参数是具体的权限名，比如打电话的权限名就是Manifest.permission.CALL_PHONE，然后我们使用方法的返回值和PackageManager.PERMISSION_GRANTED做比较，相等就说明用户已经授权，不等就表示用户没有授权
+   if(ContextCompat.checkSelfPermission(xxx,xxx) != PackageManager.PERMISSION_GRANTED){
+       //无授权
+   }else{
+       //已授权
+   }
+   ~~~
+
+2. 申请授权
+
+   ~~~java
+   //第一个参数要求是Activity的实例，第二个参数是一个String数组，我们把要申请的权限名放在数组中即可，第三个参数是请求码，只要是唯一值就可以了
+   ActivityCompat.requestPermissions(xxx,xxx,xxx);
+   //调用完了requestPermissions()方法之后，系统会弹出一个权限申请的对话框，然后用户可以选择同意或拒绝我们的权限申请，不论是哪种结果，最终都会回调到onRequest-PermissionsResult()方法中，而授权的结果则会封装在grantResults参数当中
+   ~~~
+
+3. 根据用户是否授权做下一步操作
+
+   ~~~java
+   @Override
+   public void onRequestPermissionsResult(int requestCode,String[] premissions,int[] grantResults){
+       switch(requestCode){
+           case 1 : //这个就是上面的唯一请求码
+               if(grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED){
+                   //说明用户已经授权，进行下一步操作
+                   ....
+               }else{
+                   //说明用户拒绝了授权，可以进行提示
+                   Toast.makeText(xxx,"需要授权才能进行下一步操作",xxx).show();
+   			}
+               break;
+           default:
+       }
+   }
+   ~~~
+
+#### 3、ContentResolver的基本用法
+
++ 使用ContentResolver做增删改查
+
+  ~~~java
+  //通过Context中的getContentResolver()方法获取到该类的实例
+  Cursor cursor = getContentResolver().query(
+  	uri,
+      projection, //查询指定的列名 select age,name
+      selection,  //where的约束 where name = "张三"
+      selectionArgs, //为where中的占位符提供具体的值
+      sortOrder //结果的排序方式 order by name,age
+  );
+  //内容URI给内容提供器中的数据建立了唯一标识符，它主要由两部分组成：authority和path。authority是用于对不同的应用程序做区分的，一般为了避免冲突，都会采用程序包名的方式来进行命名。比如某个程序的包名是com.example. app，那么该程序对应的authority就可以命名为com.example.app. provider。path则是用于对同一应用程序中不同的表做区分的，通常都会添加到authority的后面。比如某个程序的数据库里存在两张表：table1和table2，这时就可以将path分别命名为/table1和/table2，然后把authority和path进行组合，内容URI就变成了com.example.app.provider/table1和com.example.app.provider/table2。不过，目前还很难辨认出这两个字符串就是两个内容URI，我们还需要在字符串的头部加上协议声明
+  Uri uri = Uri.parse("content://com.example.app. provider/table1");
+  
+  //遍历结果
+  if(cursor != null){
+      while(cursor.moveToNext()){
+          String col1 = 	cursor.getString(cursor.getColumnIndex("name"));
+          int col2 = cursor.getInt(cursor.getColumnIndex("age"));
+      }
+      cursor.close();
+  }
+  ~~~
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ### 第三方、引入百度API
@@ -707,3 +1042,7 @@ implementation 'com.android.support:percent:24.2.1'
 > http://developer.baidu.com/user/reg/
 
 #### 2、
+
+### 人脸识别：
+
+#### 虹软 人脸识别

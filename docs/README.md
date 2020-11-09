@@ -3,6 +3,7 @@
 ### java
 
 - [SpringBoot](Server/java/SpringBoot/SpringBoot.md)
+- [Redis](Server/java/Redis/Redis.md)
 
 ------
 
