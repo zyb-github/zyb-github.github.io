@@ -1001,9 +1001,357 @@ public class SPActivity extends AppCompatActivity {
   }
   ~~~
 
-  
 
+#### 4、读取手机通讯录
 
+~~~java
+private void readContacts(){
+    Cursor cursor = null;
+    try{
+        //查询联系人数据
+        cursor = getContentResolver().query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                                            null,null,null,null);
+        if(cursor != null){
+            while(cursor.moveToNext()){
+                //获取联系人姓名
+                String displayName = cursor.getString(cursor.getColumnIndex(
+                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME));
+                //获取联系人手机号
+                String number = cursor.getString(cursor.getColumnIndex(
+                    ContactsContract.CommonDataKinds.Phone.NUMBER));
+            }
+        }
+    }
+}
+xml声明权限
+<user-permission android:name="android.permission.READ_CONTACTS"/>
+~~~
+
+#### 5、自定义内容提供器
+
+> 通过新建一个类去继承ContentProvider的方式来创建一个自己的内容提供器。ContentProvider类中有6个抽象方法，我们在使用子类继承它的时候，需要将这6个方法全部重写
+
+##### 1、onCreate()
+
+> 初始化内容提供器的时候调用。通常会在这里完成对数据库的创建和升级等操作，返回true表示内容提供器初始化成功，返回false则表示失败。
+
+##### 2、query()
+
+> 从内容提供器中查询数据。使用uri参数来确定查询哪张表，projection参数用于确定查询哪些列，selection和selectionArgs参数用于约束查询哪些行，sortOrder参数用于对结果进行排序，查询的结果存放在Cursor对象中返回。
+
+##### 3、insert()
+
+> 向内容提供器中添加一条数据。使用uri参数来确定要添加到的表，待添加的数据保存在values参数中。添加完成后，返回一个用于表示这条新记录的URI
+
+##### 4、update()
+
+> 更新内容提供器中已有的数据。使用uri参数来确定更新哪一张表中的数据，新数据保存在values参数中，selection和selectionArgs参数用于约束更新哪些行，受影响的行数将作为返回值返回。
+
+##### 5、delete()
+
+> 从内容提供器中删除数据。使用uri参数来确定删除哪一张表中的数据，selection和selectionArgs参数用于约束删除哪些行，被删除的行数将作为返回值返回。
+
+##### 6、getType()
+
+> 根据传入的内容URI来返回相应的MIME类型。
+>
+> 可以看到，几乎每一个方法都会带有Uri这个参数，这个参数也正是调用ContentResolver的增删改查方法时传递过来的。而现在，我们需要对传入的Uri参数进行解析，从中分析出调用方期望访问的表和数据。
+>
+> 一个内容URI所对应的MIME字符串主要由3部分组成，Android对这3个部分做了如下格式规定
+>
+> + 必须以vnd开头。
+> + 如果内容URI以路径结尾，则后接android.cursor.dir/，如果内容URI以id结尾，则后接android.cursor.item/。
+> + 最后接上vnd.<authority>.<path>。
+>
+> 对于content://com.example.app.provider/table1这个内容URI，它所对应的MIME类型就可以写成：
+>
+> vnd.android.cursor.item/vnd.com.example.app.provider/table1
+
+#### 八、服务
+
+> 服务（Service）是Android中实现程序后台运行的解决方案，它非常适合去执行那些不需要和用户交互而且还要求长期运行的任务。服务的运行不依赖于任何用户界面，即使程序被切换到后台，或者用户打开了另外一个应用程序，服务仍然能够保持正常运行。不过需要注意的是，服务并不是运行在一个独立的进程当中的，而是依赖于创建服务时所在的应用程序进程。当某个应用程序进程被杀掉时，所有依赖于该进程的服务也会停止运行。另外，也不要被服务的后台概念所迷惑，实际上服务并不会自动开启线程，所有的代码都是默认运行在主线程当中的。也就是说，我们需要在服务的内部手动创建子线程，并在这里执行具体的任务，否则就有可能出现主线程被阻塞住的情况
+
+##### 1、多线程编程
+
+> Android提供了一套异步消息处理机制，完美地解决了在子线程中进行UI操作的问题
+
+~~~java
+//简易demo
+public class MainActivity extends AppCompatActivity implements View.OnClickListener{
+    public static final int UPDATE_TEXT = 1;
+    private TextView text;
+    private Handle handle = new Handle(){
+        public void handleMessage(Message msg){
+            switch(msg.what){
+                case UPDATE_TEXT:
+                    //进行UI操作
+                    text.setText("Nice to meet you");
+                    break;
+                default:
+                    break;
+            }
+        }
+    };
+    
+    ...
+    @Override
+    public void onClick(View v){
+        switch(v.getId()){
+            case R.id.change_text:
+                new Thread(new Runnable(){
+                    @Override
+                    public void run(){
+                        Message msg = new Message();
+                        msg.what = UPDATE_TEXT;
+                        handler.sendMessage(msg);
+                    }
+                }).start();
+                break;
+            default:
+                break;
+        }
+    }
+}
+~~~
+
+##### 2、解析异步消息处理机制
+
+> Android中的异步消息处理主要由4个部分组成：Message、Handler、MessageQueue和Looper
+
++ Message
+
+  > Message是在线程之间传递的消息，它可以在内部携带少量的信息，用于在不同线程之间交换数据。上一小节中我们使用到了Message的what字段，除此之外还可以使用arg1和arg2字段来携带一些整型数据，使用obj字段携带一个Object对象
+
++ Handler
+
+  > Handler顾名思义也就是处理者的意思，它主要是用于发送和处理消息的。发送消息一般是使用Handler的sendMessage()方法，而发出的消息经过一系列地辗转处理后，最终会传递到Handler的handleMessage()方法中
+
++ MessageQueue
+
+  > MessageQueue是消息队列的意思，它主要用于存放所有通过Handler发送的消息。这部分消息会一直存在于消息队列中，等待被处理。每个线程中只会有一个MessageQueue对象。
+
++ Looper
+
+  > Looper是每个线程中的MessageQueue的管家，调用Looper的loop()方法后，就会进入到一个无限循环当中，然后每当发现MessageQueue中存在一条消息，就会将它取出，并传递到Handler的handleMessage()方法中。每个线程中也只会有一个Looper对象
+
+> 首先需要在主线程当中创建一个Handler对象，并重写handleMessage()方法。然后当子线程中需要进行UI操作时，就创建一个Message对象，并通过Handler将这条消息发送出去。之后这条消息会被添加到MessageQueue的队列中等待被处理，而Looper则会一直尝试从MessageQueue中取出待处理消息，最后分发回Handler的handleMessage()方法中。由于Handler是在主线程中创建的，所以此时handleMessage()方法中的代码也会在主线程中运行，于是我们在这里就可以安心地进行UI操作了
+
+##### 3、AsyncTask
+
+> AsyncTask是一个抽象类,继承时我们可以为AsyncTask类指定3个泛型参数，这3个参数的用途如下
+>
+> + Params。在执行AsyncTask时需要传入的参数，可用于在后台任务中使用。
+> + Progress。后台任务执行时，如果需要在界面上显示当前的进度，则使用这里指定的泛型作为进度单位
+> + Result。当任务执行完毕后，如果需要对结果进行返回，则使用这里指定的泛型作为返回值类型。
+
+一个简单的自定义AsyncTask
+
+~~~java
+class DownloadTask extends AsyncTask<Void,Integer,Boolean>{
+    ...
+}
+//第一个泛型参数指定为Void，表示在执行AsyncTask的时候不需要传入参数给后台任务。
+//第二个泛型参数指定为Integer，表示使用整型数据来作为进度显示单位。
+//第三个泛型参数指定为Boolean，则表示使用布尔型数据来反馈执行结果
+~~~
+
+> 经常需要去重写的AsyncTask方法有以下4个
+>
+> + onPreExecute()
+>
+>   这个方法会在后台任务开始执行之前调用，用于进行一些界面上的初始化操作，比如显示一个进度条对话框等
+>
+> + doInBackground(Params...)
+>
+>   这个方法中的所有代码都会在子线程中运行，我们应该在这里去处理所有的耗时任务。任务一旦完成就可以通过return语句来将任务的执行结果返回，如果AsyncTask的第三个泛型参数指定的是Void，就可以不返回任务执行结果。注意，在这个方法中是不可以进行UI操作的，如果需要更新UI元素，比如说反馈当前任务的执行进度，可以调用publishProgress (Progress...)方法来完成。
+>
+> + onProgressUpdate(Progress...)
+>
+>   当在后台任务中调用了publishProgress(Progress...)方法后，onProgressUpdate (Progress...)方法就会很快被调用，该方法中携带的参数就是在后台任务中传递过来的。在这个方法中可以对UI进行操作，利用参数中的数值就可以对界面元素进行相应的更新。
+>
+> + onPostExecute(Result)
+>
+>   当后台任务执行完毕并通过return语句进行返回时，这个方法就很快会被调用。返回的数据会作为参数传递到此方法中，可以利用返回的数据来进行一些UI操作，比如说提醒任务执行的结果，以及关闭掉进度条对话框等。
+
+比较完整的自定义AsyncTask
+
+~~~~java
+class DownloadTask extends AsyncTask<Void,Integer,Boolean>{
+ 	@Override
+    protected void onPreExecute(){
+        progressDialog.show();//显示进度对话框
+    }
+    @Override
+    protected Boolean doInBackground(Void.. params){
+        try{
+            while(true){
+                int downloadPercent = doDownload();//虚构一个下载方法
+                publishProgress(downloadPercent);
+                if(downloadPercent >= 100){
+                    break;
+                }
+            }
+        }catch(Exception e){
+            return false;
+        }
+        return true;
+    }
+    
+    @Override
+    protected void onProgressUpdate(Integer... values){
+        //在这里更新下载速度
+        progressDialog.setMessage("Downloaded"+values[0]+"%");
+    }
+    @Override
+    protected void onPostExecute(Boolean Result){
+        progressDialog.dismiss();//关闭进度对话框
+        //在这里提示下载结果
+        if(Result){
+            Toast.makeText(context,"下载成功",Toast.LENGTH_SHORT).show();
+        }else{
+            Toast.makeText(context,"下载失败",Toast.LENGTH_SHORT).show();
+        }
+    }
+}
+//总结
+//在这个DownloadTask中，我们在doInBackground()方法里去执行具体的下载任务。这个方法里的代码都是在子线程中运行的，因而不会影响到主线程的运行。注意这里虚构了一个doDownload()方法，这个方法用于计算当前的下载进度并返回，我们假设这个方法已经存在了。在得到了当前的下载进度后，下面就该考虑如何把它显示到界面上了，由于doInBackground()方法是在子线程中运行的，在这里肯定不能进行UI操作，所以我们可以调用publishProgress()方法并将当前的下载进度传进来，这样onProgressUpdate()方法就会很快被调用，在这里就可以进行UI操作了。当下载完成后，doInBackground()方法会返回一个布尔型变量，这样onPostExecute()方法就会很快被调用，这个方法也是在主线程中运行的。然后在这里我们会根据下载的结果来弹出相应的Toast提示，从而完成整个DownloadTask任务。简单来说，使用AsyncTask的诀窍就是，在doInBackground()方法中执行具体的耗时任务，在onProgressUpdate()方法中进行UI操作，在onPostExecute()方法中执行一些任务的收尾工作
+//如果想要启动这个任务，只需编写以下代码即可：
+new DownloadTask().execute();
+~~~~
+
+##### 4、定义一个服务
+
+>  MyService是继承自Service类的，说明这是一个服务。目前MyService中可以算是空空如也，但有一个onBind()方法特别醒目。这个方法是Service中唯一的一个抽象方法，所以必须要在子类里实现
+>
+> 服务都需要在AndroidManifest.xml文件中进行注册才能生效
+
+~~~java
+public class MyService extends Service{
+    public MyService(){
+        
+    }
+    @Override
+    public IBinder onBind(Intent intent){
+        throw new UnsupportedOperationException("Not yet implemented");
+    }
+    @Override
+    public void onCreate(){
+        //onCreate()方法会在服务创建的时候调用
+        super.onCreate();
+    }
+    @Override
+    public int onStartCommand(Intend intend,int flags,int startId){
+        //onStartCommand()方法会在每次服务启动的时候调用
+        return super.onStartCommand(intend,flags,startId);
+    }
+    @Override
+    public void onDestroy(){
+        //onDestroy()方法会在服务销毁的时候调用
+        super.onDestroy();
+    }
+}
+//注册服务 AndroidManifest.xml
+<service 	
+    android:id=".MyService"
+    android:enabled="true"
+    android:exported="true"
+    >
+</service>
+~~~
+
+##### 5、启动和停止服务
+
+> 启动和停止的方法当然你也不会陌生，主要是借助Intent来实现的
+
+~~~java
+Intent startIntent = new Intent(this,MyService.class);
+startService(startIntent);//开启服务
+stopService(startIntent);//停止服务
+~~~
+
+##### 6、活动和服务进行通信
+
++ 在服务里添加Binder对象
+
+  ~~~java
+  public class MyService extends Service{
+      public MyService(){
+          
+      }
+      private DownloadBinder mBinder = new DownloadBinder();
+      class DownloadBinder extends Binder(){
+          public void startDownload(){
+              log.d("MyService","开始下载。。。。");//模拟下载操作
+          }
+          public int getProgress(){
+              log.d("MyService","getProgress。。。。");
+              return 0;
+          }
+      }
+      @Override
+      public IBinder onBind(Intent intent){
+          throw new UnsupportedOperationException("Not yet implemented");
+      }
+      @Override
+      public void onCreate(){
+          //onCreate()方法会在服务创建的时候调用
+          super.onCreate();
+      }
+      @Override
+      public int onStartCommand(Intend intend,int flags,int startId){
+          //onStartCommand()方法会在每次服务启动的时候调用
+          return super.onStartCommand(intend,flags,startId);
+      }
+      @Override
+      public void onDestroy(){
+          //onDestroy()方法会在服务销毁的时候调用
+          super.onDestroy();
+      }
+  }
+  ~~~
+
++ 在活动里面绑定服务
+
+  ~~~java
+  public class MainActivity extends AppCompatActivity implements View.OnClickListener{
+      private MyService.DownloadBinder downloadBinder;
+      private ServiceConnection conn = new ServiceConnection(){
+          @Override
+          public void onServiceDisconnected(ComponentName name){
+              
+          }
+          @Override
+          public void onServiceConnected(ComponentName name,IBinder service){
+              downloadBinder = (MyService.DownloadBinder)service;
+              downloadBinder.startDownload();
+              downloadBinder.getProgress();
+          }
+      }
+   
+      //构建出了一个Intent对象，然后调用bindService()方法将MainActivity和MyService进行绑定。bindService()方法接收3个参数，第一个参数就是刚刚构建出的Intent对象，第二个参数是前面创建出的ServiceConnection的实例，第三个参数则是一个标志位，这里传入BIND_AUTO_CREATE表示在活动和服务进行绑定后自动创建服务。这会使得MyService中的onCreate()方法得到执行，但onStartCommand()方法不会执行
+      ...
+      @Override
+      public void onClick(View v){
+          switch(v.getId()){
+              case R.id.change_text:
+                  Intent bindIntent = new Intent(this,MyService.class);
+                  bindService(bindIntent,conn,BIND_AUTO_CREATE);//绑定服务
+                  break;
+              default:
+                  unbindService(conn);//解绑服务
+                  break;
+          }
+      }
+  }
+  ~~~
+
+##### 7、服务的生命周期
+
+> 在项目的任何位置调用了Context的startService()方法，相应的服务就会启动起来，并回调onStartCommand()方法。如果这个服务之前还没有创建过，onCreate()方法会先于onStartCommand()方法执行。服务启动了之后会一直保持运行状态，直到stopService()或stopSelf()方法被调用。注意，虽然每调用一次startService()方法，onStartCommand()就会执行一次，但实际上每个服务都只会存在一个实例。所以不管你调用了多少次startService()方法，只需调用一次stopService()或stopSelf()方法，服务就会停止下来了。另外，还可以调用Context的bindService()来获取一个服务的持久连接，这时就会回调服务中的onBind()方法。类似地，如果这个服务之前还没有创建过，onCreate()方法会先于onBind()方法执行。之后，调用方可以获取到onBind()方法里返回的IBinder对象的实例，这样就能自由地和服务进行通信了。只要调用方和服务之间的连接没有断开，服务就会一直保持运行状态
+>
+> 当调用了startService()方法后，又去调用stopService()方法，这时服务中的onDestroy()方法就会执行，表示服务已经销毁了。类似地，当调用了bindService()方法后，又去调用unbindService()方法，onDestroy()方法也会执行，这两种情况都很好理解。但是需要注意，我们是完全有可能对一个服务既调用了startService()方法，又调用了bindService()方法的，这种情况下该如何才能让服务销毁掉呢？根据Android系统的机制，一个服务只要被启动或者被绑定了之后，就会一直处于运行状态，必须要让以上两种条件同时不满足，服务才能被销毁。所以，这种情况下要同时调用stopService()和unbindService()方法，onDestroy()方法才会执行
+
+##### 8、前台服务
 
 
 

@@ -15,7 +15,7 @@ docsify serve
 > git 设置代理
 
 ~~~shell
-git config --global http.proxy http://127.0.0.1:8080
+git config --global http.proxy http://proxy1.bj.petrochina:8080
 ~~~
 
 > git 取消代理
